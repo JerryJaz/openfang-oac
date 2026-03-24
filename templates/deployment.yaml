@@ -1,0 +1,132 @@
+# ─────────────────────────────────────────────────────────────────
+# OpenFang — Kubernetes manifests for Olares One
+#
+# Namespace: user-space (Olares default for user apps)
+# Image:     ghcr.io/jerryjaz/openfang:latest
+#            (built and pushed by GitHub Actions on each upstream release)
+#
+# Apply with:
+#   kubectl apply -f deployment.yaml -n user-space
+# ─────────────────────────────────────────────────────────────────
+
+# ── Persistent Volume Claim ──────────────────────────────────────
+# Stores: config.toml, agents/, SKILL.md, SQLite DB, knowledge graphs
+# Survives pod restarts and image upgrades.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openfang-data
+  namespace: user-space-jerryjaznkayjaz
+  labels:
+    app: openfang
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # Olares One uses local-path provisioner by default.
+  # Remove storageClassName to use cluster default.
+  storageClassName: local-path
+
+---
+# ── Ollama Service (replaces socat proxy) ────────────────────────
+# Exposes Ollama's ClusterIP as a stable DNS name within the cluster.
+# OpenFang config.toml points to http://ollama-svc:11434/v1
+#
+# Routes to Qwen3 30B — the model Bunny is configured to use.
+# Namespace confirmed from: kubectl get pods -A | grep ollama
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama-svc
+  namespace: user-space-jerryjaznkayjaz
+spec:
+  type: ExternalName
+  # Forwards DNS for ollama-svc.user-space.svc.cluster.local
+  # to the Qwen3 30B Ollama service in its shared namespace.
+  externalName: ollama.ollamaqwen330ba3bv2server-shared.svc.cluster.local
+
+---
+# ── OpenFang Service ─────────────────────────────────────────────
+# Exposes the dashboard/API within the cluster.
+# Olares will create an Entrance on top of this for external access.
+apiVersion: v1
+kind: Service
+metadata:
+  name: openfang
+  namespace: user-space-jerryjaznkayjaz
+  labels:
+    app: openfang
+spec:
+  selector:
+    app: openfang
+  ports:
+    - name: http
+      port: 4200
+      targetPort: 4200
+  type: ClusterIP
+
+---
+# ── Deployment ───────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openfang
+  namespace: user-space-jerryjaznkayjaz
+  labels:
+    app: openfang
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openfang
+  strategy:
+    # RollingUpdate would briefly run two pods sharing one PVC (RWO).
+    # Recreate is safer for single-replica stateful workloads.
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: openfang
+    spec:
+      containers:
+        - name: openfang
+          image: ghcr.io/jerryjaz/openfang:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4200
+          env:
+            - name: OPENFANG_DATA_DIR
+              value: /data
+            # Ollama URL — no socat, no ClusterIP hardcoding.
+            # K8s DNS resolves ollama-svc to Ollama's service.
+            - name: OLLAMA_BASE_URL
+              value: http://ollama-svc:11434/v1
+          volumeMounts:
+            - name: openfang-data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4200
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4200
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: openfang-data
+          persistentVolumeClaim:
+            claimName: openfang-data
+

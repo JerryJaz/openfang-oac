@@ -1,0 +1,75 @@
+# ─────────────────────────────────────────────────────────────────
+# OlaresManifest.yaml — OpenFang as an Olares Application Chart (OAC)
+#
+# Deploy via Olares Studio → "Install from source"
+# or: olares-cli app install ./openfang-oac
+#
+# Entrances:
+#   - dashboard (private): OpenFang UI — authenticated via Authelia
+#   - api (public):        /v1/chat/completions and webhook endpoints
+#                          used by Bunny → n8n → Telegram pipeline
+# ─────────────────────────────────────────────────────────────────
+
+olaresManifest.version: '0.9.0'
+
+metadata:
+  name: openfang
+  title: OpenFang
+  description: Open-source Agent Operating System — Bunny agent gateway for Quiet Media
+  icon: https://raw.githubusercontent.com/RightNow-AI/openfang/main/docs/logo.png
+  appid: openfang
+  version: '0.5.1'
+  categories:
+    - productivity
+  author: JerryJaz
+  website: https://github.com/RightNow-AI/openfang
+
+spec:
+  versionName: '0.5.1'
+  featuredImage: ''
+
+  # ── Entrances ────────────────────────────────────────────────
+  # Private entrance: Dashboard UI, protected by Authelia SSO
+  # Public entrance:  API + webhooks — no auth wall so n8n/Telegram can call in
+  entrances:
+    - name: dashboard
+      host: openfang
+      port: 4200
+      title: OpenFang Dashboard
+      icon: ''
+      authLevel: private       # Authelia SSO required
+
+    - name: api
+      host: openfang
+      port: 4200
+      title: OpenFang API
+      icon: ''
+      authLevel: public        # Webhook/API access — no login prompt
+      invisible: true          # Hides from app launcher; URL still active
+
+  # ── Resource requirements ────────────────────────────────────
+  requiredMemory: 256Mi
+  limitedMemory: 1Gi
+  requiredDisk: 10Gi
+  requiredCpu: 0.1
+  limitedCpu: 1.0
+
+  # ── GPU ──────────────────────────────────────────────────────
+  # OpenFang delegates inference to Ollama — no direct GPU access needed.
+  gpu: 0
+
+  # ── Permissions ─────────────────────────────────────────────
+  permission:
+    appData: true       # Persistent /data PVC
+    appCache: false
+    userData: []
+
+  # ── Middleware ───────────────────────────────────────────────
+  # No built-in DB needed — OpenFang uses bundled SQLite in /data
+  middleware: {}
+
+options:
+  # Allow the public API entrance to be called without OIDC
+  allowPublicNetworkAccess: true
+  analytics:
+    enabled: false
