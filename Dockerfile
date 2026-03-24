@@ -47,5 +47,5 @@ EXPOSE 4200
 ENV OPENFANG_DATA_DIR=/data
 
 ENTRYPOINT ["openfang"]
-CMD ["start", "--data-dir", "/data"]
+CMD ["start"]
 
