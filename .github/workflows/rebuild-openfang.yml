@@ -1,0 +1,125 @@
+# ─────────────────────────────────────────────────────────────────
+# .github/workflows/rebuild-openfang.yml
+#
+# Watches RightNow-AI/openfang for new releases.
+# When a new release is published upstream, this workflow:
+#   1. Builds a fresh Docker image from that release tag
+#   2. Pushes it to ghcr.io/jerryjaz/openfang with :latest + :<tag>
+#
+# Setup (one-time):
+#   - Go to your GitHub repo → Settings → Actions → General
+#   - Set "Workflow permissions" to "Read and write permissions"
+#   - No secrets needed — GITHUB_TOKEN handles GHCR auth automatically
+#
+# Manual trigger: Actions tab → "Rebuild OpenFang Image" → Run workflow
+# ─────────────────────────────────────────────────────────────────
+
+name: Rebuild OpenFang Image
+
+on:
+  # Check for new upstream releases every 6 hours
+  schedule:
+    - cron: '0 */6 * * *'
+
+  # Also allow manual trigger from the Actions tab
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Upstream tag or branch to build (e.g. v0.5.1 or main)'
+        required: false
+        default: 'main'
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # ── 1. Get latest upstream release tag ──────────────────
+      - name: Get latest upstream release
+        id: upstream
+        run: |
+          LATEST=$(curl -s https://api.github.com/repos/RightNow-AI/openfang/releases/latest \
+            | jq -r '.tag_name')
+          echo "tag=${LATEST}" >> $GITHUB_OUTPUT
+          echo "Latest upstream release: ${LATEST}"
+
+      # ── 2. Check if we already have this tag in GHCR ────────
+      - name: Check if image already exists
+        id: check
+        run: |
+          TAG=${{ steps.upstream.outputs.tag }}
+          # Try to pull the manifest — if it exists, skip build
+          if docker manifest inspect ghcr.io/jerryjaz/openfang:${TAG} > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Image ghcr.io/jerryjaz/openfang:${TAG} already exists, skipping build."
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "New upstream release ${TAG} — will build."
+          fi
+
+      # ── 3. Check out this repo (for the Dockerfile) ─────────
+      - name: Checkout
+        if: steps.check.outputs.exists == 'false' || github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v4
+
+      # ── 4. Set up Docker Buildx ─────────────────────────────
+      - name: Set up Docker Buildx
+        if: steps.check.outputs.exists == 'false' || github.event_name == 'workflow_dispatch'
+        uses: docker/setup-buildx-action@v3
+
+      # ── 5. Log in to GHCR ───────────────────────────────────
+      - name: Log in to GitHub Container Registry
+        if: steps.check.outputs.exists == 'false' || github.event_name == 'workflow_dispatch'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 6. Determine build ref ──────────────────────────────
+      - name: Set build ref
+        id: ref
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && \
+             [ -n "${{ github.event.inputs.ref }}" ]; then
+            echo "ref=${{ github.event.inputs.ref }}" >> $GITHUB_OUTPUT
+          else
+            echo "ref=${{ steps.upstream.outputs.tag }}" >> $GITHUB_OUTPUT
+          fi
+
+      # ── 7. Build and push ────────────────────────────────────
+      - name: Build and push OpenFang image
+        if: steps.check.outputs.exists == 'false' || github.event_name == 'workflow_dispatch'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          # Build args pass the upstream tag into the Dockerfile's git clone
+          build-args: |
+            OPENFANG_REF=${{ steps.ref.outputs.ref }}
+          tags: |
+            ghcr.io/jerryjaz/openfang:latest
+            ghcr.io/jerryjaz/openfang:${{ steps.upstream.outputs.tag }}
+          # Cache layers in GHCR to speed up Rust compilation on repeat builds
+          cache-from: type=registry,ref=ghcr.io/jerryjaz/openfang:buildcache
+          cache-to: type=registry,ref=ghcr.io/jerryjaz/openfang:buildcache,mode=max
+          platforms: linux/amd64
+
+      # ── 8. Summary ──────────────────────────────────────────
+      - name: Build summary
+        if: steps.check.outputs.exists == 'false' || github.event_name == 'workflow_dispatch'
+        run: |
+          echo "## OpenFang Image Rebuilt" >> $GITHUB_STEP_SUMMARY
+          echo "- **Upstream ref:** ${{ steps.ref.outputs.ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image:** \`ghcr.io/jerryjaz/openfang:${{ steps.upstream.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Also tagged:** \`ghcr.io/jerryjaz/openfang:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "To update Olares One, run:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "kubectl rollout restart deployment/openfang -n user-space" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
