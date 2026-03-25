@@ -52,7 +52,7 @@ jobs:
         run: |
           TAG=${{ steps.upstream.outputs.tag }}
           # Try to pull the manifest — if it exists, skip build
-          if docker manifest inspect ghcr.io/jerryjaz/openfang:${TAG} > /dev/null 2>&1; then
+          if docker manifest inspect docker.io/jerryjaz/openfang:${TAG} > /dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
             echo "Image ghcr.io/jerryjaz/openfang:${TAG} already exists, skipping build."
           else
@@ -70,14 +70,13 @@ jobs:
         if: steps.check.outputs.exists == 'false' || github.event_name == 'workflow_dispatch'
         uses: docker/setup-buildx-action@v3
 
-      # ── 5. Log in to GHCR ───────────────────────────────────
-      - name: Log in to GitHub Container Registry
+      # ── 5. Log in to Docker Hub ─────────────────────────────
+      - name: Log in to Docker Hub
         if: steps.check.outputs.exists == 'false' || github.event_name == 'workflow_dispatch'
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # ── 6. Determine build ref ──────────────────────────────
       - name: Set build ref
@@ -98,15 +97,13 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          # Build args pass the upstream tag into the Dockerfile's git clone
           build-args: |
             OPENFANG_REF=${{ steps.ref.outputs.ref }}
           tags: |
-            ghcr.io/jerryjaz/openfang:latest
-            ghcr.io/jerryjaz/openfang:${{ steps.upstream.outputs.tag }}
-          # Cache layers in GHCR to speed up Rust compilation on repeat builds
-          cache-from: type=registry,ref=ghcr.io/jerryjaz/openfang:buildcache
-          cache-to: type=registry,ref=ghcr.io/jerryjaz/openfang:buildcache,mode=max
+            docker.io/jerryjaz/openfang:latest
+            docker.io/jerryjaz/openfang:${{ steps.upstream.outputs.tag }}
+          cache-from: type=registry,ref=docker.io/jerryjaz/openfang:buildcache
+          cache-to: type=registry,ref=docker.io/jerryjaz/openfang:buildcache,mode=max
           platforms: linux/amd64
 
       # ── 8. Summary ──────────────────────────────────────────
@@ -114,12 +111,6 @@ jobs:
         if: steps.check.outputs.exists == 'false' || github.event_name == 'workflow_dispatch'
         run: |
           echo "## OpenFang Image Rebuilt" >> $GITHUB_STEP_SUMMARY
-          echo "- **Upstream ref:** ${{ steps.ref.outputs.ref }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image:** \`ghcr.io/jerryjaz/openfang:${{ steps.upstream.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Also tagged:** \`ghcr.io/jerryjaz/openfang:latest\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "To update Olares One, run:" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "kubectl rollout restart deployment/openfang -n user-space" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image:** \`docker.io/jerryjaz/openfang:${{ steps.upstream.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Also tagged:** \`docker.io/jerryjaz/openfang:latest\`" >> $GITHUB_STEP_SUMMARY
 
