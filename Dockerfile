@@ -46,6 +46,8 @@ EXPOSE 4200
 # Config lives in /data so it survives pod restarts
 ENV OPENFANG_DATA_DIR=/data
 
+RUN ln -s /data /root/.openfang
+
 ENTRYPOINT ["openfang"]
 CMD ["start"]
 
