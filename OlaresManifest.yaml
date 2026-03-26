@@ -60,9 +60,10 @@ spec:
 
   # ── Permissions ─────────────────────────────────────────────
   permission:
-    appData: true       # Persistent /data PVC
-    appCache: false
-    userData: []
+  appData: true
+  provider:
+    - appName: ollamaqwen330ba3bv2
+      providerName: ollamaqwen330ba3bv2-svc
 
   # ── Middleware ───────────────────────────────────────────────
   # No built-in DB needed — OpenFang uses bundled SQLite in /data
