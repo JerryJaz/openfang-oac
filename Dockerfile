@@ -22,8 +22,8 @@ RUN git clone --depth 1 --branch ${OPENFANG_REF} \
 
 # Use the release-fast profile for faster CI builds.
 # Switch to --release for production images.
-RUN cargo build --profile release-fast -p openfang-cli \
-    && cp target/release-fast/openfang /usr/local/bin/openfang
+RUN cargo build --release --bin openfang \
+    && cp target/release/openfang /usr/local/bin/openfang
 
 # ─────────────────────────────────────────────────────────────────
 # Stage 2: Minimal runtime image
