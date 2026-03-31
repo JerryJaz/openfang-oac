@@ -5,8 +5,10 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-ARG OPENFANG_REF=latest
-RUN curl -fsSL https://openfang.sh/install | sh
+ARG OPENFANG_VERSION=0.5.6
+RUN curl -fsSL https://github.com/RightNow-AI/openfang/releases/download/v${OPENFANG_VERSION}/openfang-x86_64-unknown-linux-gnu.tar.gz \
+    | tar -xz -C /usr/local/bin/ \
+    && chmod +x /usr/local/bin/openfang
 
 VOLUME ["/data"]
 EXPOSE 4200
